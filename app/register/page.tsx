@@ -1,169 +1,216 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
-// Define a type for the form data
-interface FormData {
-  name: string;
-  email: string;
-  password: string;
-  gender: string;
-}
+export default function Register() {
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [image_file, setImageFile] = useState<File | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [gender, setGender] = useState("");
 
-export default function RegisterPage() {
-  const [formData, setFormData] = useState<FormData>({
-    name: "",
-    email: "",
-    password: "",
-    gender: "male",
-  });
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prevData) => ({ ...prevData, [name]: value }));
-  };
-
+  const router = useRouter();
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setImagePreviewUrl(URL.createObjectURL(file));
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      setImageFile(file);
+    } else {
+      setPreviewImage(null);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Handle form submission logic here
-    console.log("Form Data:", formData);
-    console.log("Image Preview URL:", imagePreviewUrl);
+    // บันทึกรูปภาพไปยัง Supabase Storage
+    let image_url = "";
+    if (image_file) {
+      const new_image_file_name = `${Date.now()}-${image_file.name}`;
+
+      // อัปโหลดรูปภาพไปยัง Supabase Storage
+      const { error } = await supabase.storage
+        .from("user_bk")
+        .upload(new_image_file_name, image_file);
+      if (error) {
+        alert("เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ");
+        console.log(error.message);
+        return;
+      } else {
+        // get url ของรูปภาพที่อัปโหลด
+        const { data } = supabase.storage
+          .from("user_bk")
+          .getPublicUrl(new_image_file_name);
+        image_url = data.publicUrl;
+      }
+    }
+
+    // บันทึกข้อมูลงานลงในตาราง tasks
+    const { error } = await supabase.from("user_tb").insert({
+      fullname: fullName,
+      email: email,
+      password: password,
+      gender: gender,
+      user_image_url: image_url,
+    });
+
+    if (error) {
+      console.log(error.message);
+      return;
+    } else {
+      alert("บันทึกข้อมูลเรียบร้อย");
+      setFullName("");
+      setEmail("");
+      setPassword("");
+      setGender("");
+      setPreviewImage(null);
+      image_url = "";
+      router.push("/login");
+    }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-amber-50 p-6">
-      <div className="w-full max-w-xl rounded-2xl bg-white p-8 shadow-xl md:p-12">
-        <h1 className="mb-8 text-center font-serif text-4xl font-bold text-amber-800">Register</h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Name Input */}
+    <div className="flex min-h-screen items-center justify-center bg-amber-50 p-4 text-black">
+      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-2xl">
+        <h1 className="mb-6 text-center text-3xl font-bold text-amber-800">
+          Register
+        </h1>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-stone-700">
-              Name - Last Name
+            <label
+              htmlFor="name"
+              className="mb-1 block text-sm font-medium text-gray-700"
+            >
+              ชื่อ-สกุล
             </label>
             <input
-              type="text"
               id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
+              type="text"
+              placeholder="Full Name"
+              className="w-full rounded-md border border-amber-200 p-2 bg-amber-50 focus:border-amber-200 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
               required
-              className="mt-1 block w-full rounded-full border-2 border-amber-300 bg-amber-50 px-4 py-2 text-stone-800 placeholder-stone-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              placeholder="Enter your full name"
             />
           </div>
 
-          {/* Email Input */}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-stone-700">
-              Email
+            <label
+              htmlFor="email"
+              className="mb-1 block text-sm font-medium text-gray-700"
+            >
+              อีเมล์
             </label>
             <input
-              type="email"
               id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
+              type="email"
+              placeholder="Email"
+              className="w-full rounded-md border border-amber-200 p-2  focus:border-amber-200 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
-              className="mt-1 block w-full rounded-full border-2 border-amber-300 bg-amber-50 px-4 py-2 text-stone-800 placeholder-stone-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              placeholder="Enter your email"
             />
           </div>
 
-          {/* Password Input */}
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-stone-700">
-              Password
+            <label
+              htmlFor="password"
+              className="mb-1 block text-sm font-medium text-gray-700"
+            >
+              รหัสผ่าน
             </label>
             <input
-              type="password"
               id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleInputChange}
+              type="password"
+              placeholder="Password"
+              className="w-full rounded-md border border-amber-200 p-2 bg-amber-50 focus:border-amber-200 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
-              className="mt-1 block w-full rounded-full border-2 border-amber-300 bg-amber-50 px-4 py-2 text-stone-800 placeholder-stone-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              placeholder="Enter your password"
             />
           </div>
 
-          {/* Gender Select */}
           <div>
-            <label htmlFor="gender" className="block text-sm font-medium text-stone-700">
-              Gender
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              เพศ
             </label>
-            <select
-              id="gender"
-              name="gender"
-              value={formData.gender}
-              onChange={handleInputChange}
-              className="mt-1 block w-full rounded-full border-2 border-amber-300 bg-amber-50 px-4 py-2 text-stone-800 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-
-          {/* Image Upload and Preview */}
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0">
-              {imagePreviewUrl ? (
-                <Image
-                  src={imagePreviewUrl}
-                  alt="Image Preview"
-                  width={96}
-                  height={96}
-                  className="h-24 w-24 rounded-full border-4 border-amber-300 object-cover shadow-md"
+            <div className="flex space-x-4">
+              <label className="inline-flex items-center">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="male"
+                  className="text-amber-800 focus:ring-amber-800"
+                  onChange={(e) => setGender(e.target.value)}
                 />
-              ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-dashed border-amber-300 bg-amber-100 text-stone-500">
-                  <span className="text-center text-sm">Image Preview</span>
-                </div>
-              )}
-            </div>
-            <div className="flex-1">
-              <label htmlFor="image" className="block text-sm font-medium text-stone-700">
-                Profile Image
+                <span className="ml-2 text-gray-700">ชาย</span>
               </label>
-              <input
-                type="file"
-                id="image"
-                name="image"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="mt-1 block w-full text-sm text-stone-500 file:mr-4 file:rounded-full file:border-0 file:bg-amber-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-amber-700 file:transition-colors file:duration-200 hover:file:bg-amber-200"
-              />
+              <label className="inline-flex items-center">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="female"
+                  className="text-amber-800 focus:ring-amber-800"
+                  onChange={(e) => setGender(e.target.value)}
+                />
+                <span className="ml-2 text-gray-700">หญิง</span>
+              </label>
             </div>
           </div>
 
-          {/* Register Button */}
           <div>
-            <button
-              type="submit"
-              className="w-full rounded-full bg-amber-800 px-4 py-3 font-semibold text-white shadow-lg transition duration-300 ease-in-out hover:bg-amber-900"
+            <label
+              htmlFor="profileImage"
+              className="mb-1 block text-sm font-medium text-gray-700"
             >
-              Register
-            </button>
+              รูปโปรไฟล์
+            </label>
+            <input
+              id="profileImage"
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="w-full rounded-md border border-amber-200 p-2 bg-amber-50 text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-amber-800 hover:file:bg-blue-100"
+            />
           </div>
+
+          {previewImage && (
+            <div className="mb-4 text-center">
+              <p className="text-sm font-medium text-gray-700">Image Preview</p>
+              <div className="relative mx-auto mt-2 h-32 w-32 overflow-hidden rounded-full border-2 border-amber-200 shadow-md">
+                <Image
+                  src={previewImage}
+                  alt="Profile Preview"
+                  layout="fill"
+                  objectFit="cover"
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full transform rounded-full bg-amber-800 py-2.5 font-semibold text-white shadow-lg transition-all duration-300 hover:scale-105 hover:bg-amber-700 focus:outline-none focus:ring-4 focus:ring-amber-100"
+          >
+            ลงทะเบียน
+          </button>
         </form>
 
-        {/* Login Link */}
-        <div className="mt-8 text-center text-sm text-stone-600">
+        <div className="mt-6 text-center text-sm text-gray-600">
           Already have an account?{" "}
-          <Link href="/login" passHref>
-            <span className="font-semibold text-amber-800 transition duration-300 ease-in-out hover:text-amber-900">
-              Login here
-            </span>
+          <Link
+            href="/login"
+            className="font-semibold text-amber-800 hover:underline"
+          >
+            Login here
           </Link>
         </div>
       </div>

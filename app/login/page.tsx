@@ -1,73 +1,91 @@
-'use client';
-import Link from "next/link";
-import { useState } from "react";
+"use client";
 
-export default function LoginPage() {
+import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const router = useRouter();
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (email.trim() === "" || password.trim() === "") {
-      // Show an error or a message to the user, for example:
-      alert("Please enter both email and password.");
+    const { data, error } = await supabase
+      .from("user_tb")
+      .select("*")
+      .eq("email", email)
+      .eq("password", password)
+      .single();
+
+    if (error) {
+      alert("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      console.log(error);
       return;
     }
-    // Logic for login
-    console.log("Login submitted with:", { email, password });
-    // Navigate to the dashboard after successful login validation
-    window.location.href = "/dashboard";
+
+    router.push("/dashboard/" + data.id);
+    console.log("Login form submitted!");
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-amber-50 p-6">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-xl">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-amber-800">Welcome back!</h1>
-          <p className="mt-2 text-stone-600">Please login to your account.</p>
-        </div>
-        <form onSubmit={handleLogin} className="mt-8 space-y-6">
+    <div className="flex min-h-screen items-center justify-center bg-amber-50 p-4 text-black">
+      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-2xl">
+        <h1 className="mb-6 text-center text-3xl font-bold text-amber-800">
+          Login
+        </h1>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="email">
-              Email
+            <label
+              htmlFor="email"
+              className="mb-1 block text-sm font-medium text-gray-700"
+            >
+              อีเมล์
             </label>
             <input
-              type="email"
               id="email"
-              value={email}
+              type="email"
+              placeholder="Email"
+              className="w-full rounded-md border border-amber-800 p-2 bg-amber-50 focus:border-amber-800 focus:ring focus:ring-amber-50 focus:ring-opacity-50"
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-lg border-2 border-amber-200 bg-amber-50 p-3 text-stone-800 focus:border-amber-500 focus:outline-none"
             />
           </div>
+
           <div>
-            <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="password">
-              Password
+            <label
+              htmlFor="password"
+              className="mb-1 block text-sm font-medium text-gray-700"
+            >
+              รหัสผ่าน
             </label>
             <input
-              type="password"
               id="password"
-              value={password}
+              type="password"
+              placeholder="Password"
+              className="w-full rounded-md border border-amber-800 p-2 bg-amber-50 focus:border-amber-800 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full rounded-lg border-2 border-amber-200 bg-amber-50 p-3 text-stone-800 focus:border-amber-500 focus:outline-none"
             />
           </div>
+
           <button
             type="submit"
-            className="w-full rounded-full bg-amber-800 px-8 py-3 font-semibold text-white shadow-lg transition duration-300 ease-in-out hover:bg-amber-900"
+            className="w-full transform rounded-full bg-amber-800 py-2.5 font-semibold text-white shadow-lg transition-all duration-300 hover:scale-105 hover:bg-amber-800 focus:outline-none focus:ring-4 focus:ring-blue-300"
           >
-            Login
+            เข้าสู่ระบบ
           </button>
         </form>
-        <p className="mt-6 text-center text-sm text-stone-600">
-          Already have an account?{" "}
-          <Link href="/register" passHref>
-            <span className="font-semibold text-amber-800 hover:underline">
-              Register here
-            </span>
+
+        <div className="mt-6 text-center text-sm text-gray-600">
+          Don&apos;t have an account?{" "}
+          <Link
+            href="/register"
+            className="font-semibold text-amber-800 hover:underline"
+          >
+            Register here
           </Link>
-        </p>
+        </div>
       </div>
     </div>
   );

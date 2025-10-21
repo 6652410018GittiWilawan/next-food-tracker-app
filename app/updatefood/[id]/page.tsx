@@ -1,155 +1,236 @@
-'use client';
-import { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
+"use client";
 
-// Define the food item data type
-interface FoodItem {
-  id: string;
-  date: string;
-  image: string;
-  name: string;
-  meal: 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
-}
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
-// Mock data for demonstration - in a real app, this would be fetched from the database
-const MOCK_FOOD_DATA: FoodItem = {
-  id: '1',
-  date: '2024-05-20',
-  image: 'https://placehold.co/150x150/A0522D/FFF?text=Pancakes',
-  name: 'Pancakes',
-  meal: 'Breakfast',
-};
-
-const defaultFoodImage = 'https://placehold.co/150x150/A0522D/FFF?text=Food';
-
-export default function EditFoodPage() {
-  const [foodName, setFoodName] = useState(MOCK_FOOD_DATA.name);
-  const [mealType, setMealType] = useState(MOCK_FOOD_DATA.meal);
-  const [foodDate, setFoodDate] = useState(MOCK_FOOD_DATA.date);
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(MOCK_FOOD_DATA.image);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export default function EditFood() {
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [image_file, setImageFile] = useState<File | null>(null);
+  const { id } = useParams();
+  const [foodname, setFoodName] = useState("");
+  const [meal, setMeal] = useState("");
+  const [foodDateAt, setFoodDateAt] = useState("");
+  const [old_image_file, setOldImageFile] = useState<string>("");
+  const [userId, setUserId] = useState("");
+  const router = useRouter();
 
   useEffect(() => {
-    if (selectedImage) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(selectedImage);
-    } else {
-      setImagePreviewUrl(MOCK_FOOD_DATA.image);
-    }
-  }, [selectedImage]);
+    const fetchData = async () => {
+      const { data, error } = await supabase
+        .from("food_td")
+        .select("*")
+        .eq("id", id)
+        .single();
 
+      if (error) {
+        alert("พบปัญหาในการดึงข้อมูลงานเก่า");
+        console.log(error.message);
+        return;
+      }
+
+      if (data) {
+        setUserId(data.user_id);
+        setFoodName(data.foodname);
+        setMeal(data.meal);
+        let formattedDate = "";
+        const rawDate = data.fooddate_at;
+
+        if (rawDate) {
+          if (rawDate.includes("/")) {
+            const [mm, dd, yyyy] = rawDate.split("/");
+            formattedDate = `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(
+              2,
+              "0"
+            )}`;
+          } else if (rawDate.includes("T")) {
+            formattedDate = new Date(rawDate).toISOString().split("T")[0];
+          } else {
+            formattedDate = rawDate;
+          }
+        }
+
+        setFoodDateAt(formattedDate);
+        setUserId(data.user_id);
+        setPreviewImage(data.food_image_url);
+        setOldImageFile(data.food_image_url);
+      }
+    };
+    fetchData();
+  }, [id]);
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedImage(e.target.files[0]);
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setPreviewImage(reader.result as string);
+      reader.readAsDataURL(file);
+      setImageFile(file);
+    } else {
+      setPreviewImage(null);
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleUploadAndUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log('Updating food data:', {
-      foodName,
-      mealType,
-      foodDate,
-      selectedImage,
-    });
-    // Logic to save updated data to the database
-    alert('Food item updated successfully!');
+
+    let image_url = old_image_file;
+
+    if (image_file) {
+      if (old_image_file) {
+        const oldImageName = old_image_file.split("/").pop();
+        if (oldImageName) {
+          const { error: removeError } = await supabase.storage
+            .from("food_bk")
+            .remove([oldImageName]);
+          if (removeError) {
+            console.log("ลบรูปเก่าไม่สำเร็จ:", removeError.message);
+          }
+        }
+      }
+
+      const fileExt = image_file.name.split(".").pop();
+      const fileName = `${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("food_bk")
+        .upload(fileName, image_file);
+
+      if (uploadError) {
+        alert("อัปโหลดรูปภาพไม่สำเร็จ");
+        console.log(uploadError.message);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("food_bk")
+        .getPublicUrl(fileName);
+
+      image_url = urlData.publicUrl;
+    }
+
+    const { error: updateError } = await supabase
+      .from("food_td")
+      .update({
+        foodname,
+        meal,
+        food_image_url: image_url,
+        fooddate_at: foodDateAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      alert("เกิดข้อผิดพลาดในการบันทึกการแก้ไขข้อมูล");
+      console.error(updateError.message);
+      return;
+    } else {
+      alert("บันทึกแก้ไขข้อมูลเรียบร้อย");
+      setOldImageFile(image_url);
+      setImageFile(null);
+      router.push(`/dashboard/${userId}`);
+    }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-amber-50 p-6">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-xl">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-amber-800">Edit Food Item</h1>
-          <p className="mt-2 text-stone-600">Update your food entry.</p>
-        </div>
-        <form onSubmit={handleSave} className="mt-8 space-y-6">
-          <div className="flex flex-col items-center">
-            <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-amber-800 shadow-lg">
-              {/* <Image
-                src={imagePreviewUrl || defaultFoodImage}
-                alt="Food Preview"
-                layout="fill"
-                objectFit="cover"
-              /> */}
-            </div>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-4 rounded-full bg-amber-800 px-6 py-2 text-sm font-semibold text-white shadow-lg transition duration-300 ease-in-out hover:bg-amber-900"
-            >
-              Change Photo
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageChange}
-              accept="image/*"
-              className="hidden"
-            />
-          </div>
+    <div className="flex min-h-screen items-center justify-center bg-amber-50 p-4">
+      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-2xl">
+        <h1 className="mb-6 text-center text-3xl font-bold text-amber-800">
+          แก้ไขรายการอาหาร
+        </h1>
+
+        <form onSubmit={handleUploadAndUpdate} className="space-y-6">
           <div>
-            <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="foodName">
-              Food Name
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              ชื่ออาหาร
             </label>
             <input
               type="text"
-              id="foodName"
-              value={foodName}
+              value={foodname}
               onChange={(e) => setFoodName(e.target.value)}
+              className="w-full rounded-md border border-amber-800 p-2 bg-amber-50 focus:border-amber-800 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
               required
-              className="w-full rounded-lg border-2 border-amber-200 bg-amber-50 p-3 text-stone-800 focus:border-amber-500 focus:outline-none"
             />
           </div>
+
           <div>
-            <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="mealType">
-              Meal Type
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              มื้ออาหาร
             </label>
             <select
-              id="mealType"
-              value={mealType}
-              onChange={(e) => setMealType(e.target.value as 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack')}
+              value={meal}
+              onChange={(e) => setMeal(e.target.value)}
+              className="w-full rounded-md border border-amber-800 p-2 bg-amber-50 focus:border-amber-800 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
               required
-              className="w-full rounded-lg border-2 border-amber-200 bg-amber-50 p-3 text-stone-800 focus:border-amber-500 focus:outline-none"
             >
-              <option value="Breakfast">Breakfast</option>
-              <option value="Lunch">Lunch</option>
-              <option value="Dinner">Dinner</option>
-              <option value="Snack">Snack</option>
+              <option value="">เลือกมื้ออาหาร</option>
+              <option value="breakfast">มื้อเช้า</option>
+              <option value="lunch">มื้อกลางวัน</option>
+              <option value="dinner">มื้อเย็น</option>
+              <option value="snack">ของว่าง</option>
             </select>
           </div>
+
           <div>
-            <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="foodDate">
-              Date
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              วัน/เดือน/ปี
             </label>
             <input
               type="date"
-              id="foodDate"
-              value={foodDate}
-              onChange={(e) => setFoodDate(e.target.value)}
+              value={foodDateAt}
+              onChange={(e) => setFoodDateAt(e.target.value)}
+              className="w-full rounded-md border border-amber-800 p-2 bg-amber-50 focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
               required
-              className="w-full rounded-lg border-2 border-amber-200 bg-amber-50 p-3 text-stone-800 focus:border-amber-500 focus:outline-none"
             />
           </div>
-          <div className="flex justify-center space-x-4">
-            <Link href="/dashboard" passHref>
-              <button
-                type="button"
-                className="rounded-full border-2 border-amber-800 bg-transparent px-8 py-3 font-semibold text-amber-800 shadow-lg transition duration-300 ease-in-out hover:bg-amber-100"
-              >
-                Back to Dashboard
-              </button>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              รูปอาหาร
+            </label>
+            <label
+              htmlFor="foodImage"
+              className="flex w-full cursor-pointer items-center justify-center rounded-md border border-amber-800 bg-amber-50 py-2.5 font-semibold text-amber-800 transition-colors hover:bg-blue-100"
+            >
+              เลือกรูปภาพใหม่
+            </label>
+            <input
+              id="foodImage"
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="sr-only"
+            />
+          </div>
+
+          {previewImage && (
+            <div className="text-center">
+              <p className="mb-2 text-sm font-medium text-gray-700">
+                Image Preview
+              </p>
+              <div className="relative mx-auto h-40 w-full overflow-hidden rounded-md border-2 border-amber-800 shadow-md">
+                <Image
+                  src={previewImage}
+                  alt="Food Preview"
+                  layout="fill"
+                  objectFit="cover"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-between space-x-4">
+            <Link href={`/dashboard/${userId}`} className="w-1/2">
+              <div className="transform rounded-full border border-amber-800 bg-amber-50 py-2.5 text-center font-semibold text-gray-700 shadow-md transition-all duration-300 hover:scale-105 hover:bg-gray-100">
+                ย้อนกลับ
+              </div>
             </Link>
             <button
               type="submit"
-              className="rounded-full bg-amber-800 px-8 py-3 font-semibold text-white shadow-lg transition duration-300 ease-in-out hover:bg-amber-900"
+              className="w-1/2 transform rounded-full bg-amber-800 py-2.5 font-semibold text-white shadow-md transition-all duration-300 hover:scale-105 hover:bg-amber-700"
             >
-              Save
+              บันทึก
             </button>
           </div>
         </form>
